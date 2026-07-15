@@ -1,0 +1,48 @@
+# Système
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# Éditeurs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Résultats générés par Spark
+output/
+
+# Checkpoints Spark
+checkpoints/
+
+# Métadonnées Hadoop / Spark
+*.crc
+_SUCCESS
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Journaux et fichiers temporaires
+*.log
+*.tmp
+*.bak
+*.bkp
+~$*
+.$*

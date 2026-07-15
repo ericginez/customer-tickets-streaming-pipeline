@@ -1,0 +1,169 @@
+# ===============================================================
+# docker-compose.yml
+# POC – Gestion de tickets clients en temps réel
+# Version conteneurisée avec Redpanda + Producer Python + PySpark
+# ===============================================================
+#
+# Ce fichier Docker Compose orchestre les trois composants du pipeline :
+#   1. redpanda : broker Kafka-compatible pour l'ingestion temps réel
+#   2. producer : application Python qui génère les tickets clients
+#   3. spark    : application PySpark qui consomme, transforme et exporte les données
+#
+# Le pipeline suit le flux suivant :
+#   producer  --->  redpanda  --->  spark  --->  output Parquet
+#
+# Remarque :
+# - Cette configuration est adaptée à un POC local.
+# - Elle n'est pas destinée telle quelle à un environnement de production.
+# - Les paramètres Redpanda sont volontairement simplifiés pour limiter la consommation CPU/RAM.
+
+services:
+
+  # ------------------------------------------------------------
+  # Service Redpanda
+  # ------------------------------------------------------------
+  #
+  # Redpanda est utilisé ici comme broker de streaming Kafka-compatible.
+  # Il reçoit les messages produits par le producer Python et les expose
+  # au job PySpark via le protocole Kafka.
+  #
+  # Dans ce POC, Redpanda remplace Kafka pour simuler une plateforme
+  # d'ingestion temps réel moderne, plus légère à exécuter localement.
+  redpanda:
+
+    # Image officielle Redpanda.
+    # Le tag "latest" est pratique pour un POC, mais en production il serait
+    # préférable de figer une version précise pour garantir la reproductibilité.
+    image: redpandadata/redpanda:latest
+
+    # Commande de démarrage du broker Redpanda.
+    # Les options ci-dessous simplifient le lancement dans un environnement local.
+    command:
+      # Lance le processus Redpanda.
+      - redpanda
+      - start
+
+      # Mode adapté aux environnements de développement.
+      # Redpanda assouplit certaines exigences système.
+      - --overprovisioned
+
+      # Nombre de cœurs CPU utilisés par Redpanda.
+      # Ici, 1 cœur suffit pour un POC local.
+      - --smp 1
+
+      # Mémoire allouée à Redpanda.
+      # 1G est cohérent pour un petit flux de tickets simulés.
+      - --memory 1G
+
+      # Mémoire réservée au système.
+      # 0M simplifie l'exécution locale, mais ce réglage n'est pas recommandé en production.
+      - --reserve-memory 0M
+
+      # Identifiant du nœud Redpanda.
+      # Ici, il n'y a qu'un seul broker, donc l'identifiant est fixé à 0.
+      - --node-id 0
+
+      # Désactive certaines vérifications système au démarrage.
+      # Utile en POC pour éviter des blocages liés aux contraintes Docker locales.
+      - --check=false
+
+      # Adresse d'écoute Kafka à l'intérieur du conteneur.
+      # 0.0.0.0 permet à Redpanda d'écouter sur toutes les interfaces réseau du conteneur.
+      # PLAINTEXT permet une communication non chiffrée, sans authentification
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092
+
+      # Adresse Kafka annoncée aux autres conteneurs Docker.
+      # Le hostname "redpanda" correspond au nom du service Docker Compose.
+      # Le producer et Spark peuvent donc se connecter à redpanda:9092.
+      - --advertise-kafka-addr PLAINTEXT://redpanda:9092
+
+    # Exposition du port Kafka.
+    # Le port 9092 du conteneur est exposé sur le port 9092 de la machine hôte.
+    # Cela permet également de tester Redpanda depuis Windows ou depuis un outil externe.
+    ports:
+      - "9092:9092"
+
+
+  # ------------------------------------------------------------
+  # Service Producer
+  # ------------------------------------------------------------
+  #
+  # Le producer est un conteneur Python chargé de générer des tickets clients.
+  # Il publie les messages dans un topic Redpanda au format JSON.
+  #
+  # Exemple de données générées :
+  #   - ticket_id
+  #   - client_id
+  #   - created_at
+  #   - request
+  #   - request_type
+  #   - priority
+  producer:
+
+    # Construction de l'image Docker à partir du Dockerfile situé dans ./producer.
+    # Le dossier ./producer doit donc contenir le code Python du producer
+    # ainsi que les dépendances nécessaires.
+    build: ./producer
+
+    # Le producer dépend de Redpanda.
+    # Docker Compose démarre donc Redpanda avant de démarrer ce service.
+    #
+    # Attention :
+    # depends_on garantit l'ordre de démarrage des conteneurs,
+    # mais ne garantit pas que Redpanda soit déjà pleinement prêt à accepter
+    # les connexions Kafka.
+    depends_on:
+      - redpanda
+
+    # Redémarre le producer en cas d'échec.
+    # C'est utile si le producer tente de se connecter trop tôt à Redpanda.
+    restart: on-failure
+
+
+  # ------------------------------------------------------------
+  # Service Spark
+  # ------------------------------------------------------------
+  #
+  # Ce service exécute le traitement PySpark.
+  # Il consomme les messages du topic Redpanda, applique les transformations,
+  # calcule les agrégations et exporte les résultats.
+  #
+  # Dans ce POC, Spark Structured Streaming est utilisé pour traiter les tickets
+  # en continu.
+  spark:
+
+    # Construction de l'image Docker à partir du Dockerfile situé dans ./spark.
+    # Le dossier ./spark contient le script PySpark et les dépendances nécessaires.
+    build: ./spark
+
+    # Spark dépend également de Redpanda, car il doit lire les messages produits
+    # dans le broker.
+    #
+    # Comme pour le producer, cela ne garantit pas à 100 % que Redpanda soit prêt.
+    # Le paramètre restart: on-failure permet de relancer Spark en cas d'échec initial.
+    depends_on:
+      - redpanda
+
+    # Redémarrage automatique du job Spark si le conteneur échoue.
+    # Pratique pour un POC lorsque le broker n'est pas encore disponible.
+    restart: on-failure
+
+    # Volumes montés entre la machine hôte et le conteneur Spark.
+    # Ils permettent de conserver les résultats et les checkpoints même après
+    # l'arrêt ou la suppression du conteneur.
+    volumes:
+
+      # Volume de sortie.
+      # Le dossier local ./output est monté dans le conteneur sous /app/output.
+      # Les fichiers Parquet produits par Spark sont donc accessibles directement
+      # depuis le dossier output du projet sur Windows.
+      - ./output:/app/output
+
+      # Volume de checkpoints Spark.
+      # Spark Structured Streaming utilise les checkpoints pour mémoriser l'état
+      # du traitement, suivre les offsets Kafka déjà consommés et permettre une
+      # reprise plus fiable après interruption.
+      #
+      # Cela évite notamment de retraiter inutilement certains messages ou de perdre
+      # l'état d'une agrégation streaming.
+      - ./checkpoints:/app/checkpoints
