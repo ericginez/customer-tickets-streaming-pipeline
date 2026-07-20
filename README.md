@@ -13,8 +13,6 @@ L’architecture repose sur :
 - les formats **JSON** et **Parquet** pour la restitution des résultats ;
 - **Docker Compose** pour orchestrer l’ensemble des composants.
 
----
-
 ## Contexte
 
 Une organisation reçoit en continu des demandes formulées par ses clients.
@@ -26,7 +24,9 @@ Une architecture exclusivement batch imposerait d’attendre l’exécution
 planifiée d’un traitement. Ce projet met donc en œuvre une chaîne de streaming
 capable de traiter les événements au fil de leur arrivée.
 
----
+## Présentation
+
+- [Consulter la présentation de soutenance au format PDF](presentation/projet-09-pipeline-streaming-tickets-clients.pdf)
 
 ## Objectifs
 
@@ -43,8 +43,6 @@ Le projet permet de :
 - conserver l’état du traitement avec des checkpoints ;
 - exécuter l’ensemble dans des conteneurs Docker ;
 - rendre l’infrastructure locale reproductible.
-
----
 
 ## Architecture
 
@@ -81,8 +79,6 @@ Le projet permet de :
                └──► checkpoints
 ```
 
----
-
 ## Technologies utilisées
 
 | Technologie | Utilisation |
@@ -98,8 +94,6 @@ Le projet permet de :
 | Docker Compose | Orchestration locale des services |
 | Git et GitHub | Gestion des versions et publication |
 
----
-
 ## Arborescence
 
 ```text
@@ -108,7 +102,12 @@ Le projet permet de :
 ├── README.md
 ├── docker-compose.yml
 ├── checkpoints/          # généré à l’exécution, non versionné
+├── documentation/
+│   ├── Architecture_hybride.drawio
+│   └── Justification_architecture_hybride.pdf
 ├── output/               # généré à l’exécution, non versionné
+├── presentation/
+│   └── projet-09-pipeline-streaming-tickets-clients.pdf
 ├── producer/
 │   ├── Dockerfile
 │   └── producer.py
@@ -120,8 +119,6 @@ Le projet permet de :
 
 Les fichiers contenus dans `output` et `checkpoints` sont générés pendant
 l’exécution et ne sont pas versionnés dans Git.
-
----
 
 ## Services Docker
 
@@ -191,8 +188,6 @@ Deux volumes sont montés :
 Les résultats restent ainsi accessibles sur la machine hôte après l’arrêt
 du conteneur.
 
----
-
 ## Topic Redpanda
 
 Les événements sont publiés dans le topic :
@@ -205,8 +200,6 @@ Ce topic découple la génération des tickets de leur traitement.
 
 Le producteur publie les événements indépendamment du rythme de consommation
 de Spark.
-
----
 
 ## Structure des tickets
 
@@ -226,11 +219,9 @@ Les tickets générés comportent notamment les champs suivants :
 Le contenu exact et les valeurs possibles sont définis dans
 `producer/producer.py` et dans le schéma Spark de `spark/streaming.py`.
 
----
-
 ## Fonctionnement du pipeline
 
-### 1. Génération des tickets
+### Génération des tickets
 
 Le script `producer/producer.py` génère des événements représentant des
 tickets clients.
@@ -241,14 +232,14 @@ Chaque événement est :
 2. sérialisé au format JSON ;
 3. publié dans le topic `client_tickets`.
 
-### 2. Transport avec Redpanda
+### Transport avec Redpanda
 
 Redpanda reçoit les événements et les conserve dans le topic.
 
 Sa compatibilité avec Kafka permet au producteur et à Spark d’utiliser
 les protocoles et connecteurs de l’écosystème Kafka.
 
-### 3. Consommation avec Spark
+### Consommation avec Spark
 
 Le script `spark/streaming.py` consomme les messages présents dans le topic.
 
@@ -262,7 +253,7 @@ Le traitement réalise notamment :
 - l’agrégation des tickets par type de demande ;
 - l’écriture incrémentale des résultats.
 
-### 4. Export JSON
+### Export JSON
 
 Les résultats JSON sont écrits dans :
 
@@ -277,7 +268,7 @@ Ce format facilite :
 - le débogage ;
 - les échanges avec d’autres applications.
 
-### 5. Export Parquet
+### Export Parquet
 
 Les résultats Parquet sont écrits dans :
 
@@ -292,7 +283,7 @@ Parquet offre :
 - une lecture analytique performante ;
 - une bonne intégration avec Spark.
 
-### 6. Checkpoints
+### Checkpoints
 
 Les checkpoints sont stockés dans :
 
@@ -306,8 +297,6 @@ Ils permettent à Spark de mémoriser :
 - la progression du flux ;
 - l’état du traitement ;
 - les informations nécessaires à la reprise.
-
----
 
 ## Prérequis
 
@@ -326,8 +315,6 @@ docker --version
 docker compose version
 git --version
 ```
-
----
 
 ## Lancement du pipeline
 
@@ -350,8 +337,6 @@ Vérifier l’état des services :
 ```powershell
 docker compose ps
 ```
-
----
 
 ## Consultation des journaux
 
@@ -379,8 +364,6 @@ Afficher les journaux Spark :
 docker compose logs -f spark
 ```
 
----
-
 ## Vérification de Redpanda
 
 Lister les topics :
@@ -400,8 +383,6 @@ Consommer quelques événements :
 ```powershell
 docker compose exec redpanda rpk topic consume client_tickets -n 5
 ```
-
----
 
 ## Vérification des résultats
 
@@ -425,8 +406,6 @@ de manière distribuée.
 Les fichiers `.crc` et `_SUCCESS` sont des fichiers techniques générés
 par Hadoop et Spark.
 
----
-
 ## Lecture des résultats Parquet
 
 Le script suivant permet de lire les fichiers Parquet générés :
@@ -444,8 +423,6 @@ docker compose exec spark python /app/read_parquet.py
 Le chemin exact dépend du `WORKDIR` et des instructions définies dans
 `spark/Dockerfile`.
 
----
-
 ## Arrêt de l’environnement
 
 Arrêter les services :
@@ -462,8 +439,6 @@ docker compose down -v
 
 Les dossiers locaux `output` et `checkpoints` restent présents, car ils
 sont montés depuis la machine hôte.
-
----
 
 ## Réinitialisation du traitement
 
@@ -493,8 +468,6 @@ docker compose up -d --build
 La suppression des checkpoints entraîne une nouvelle consommation du flux
 selon la configuration Spark et la politique des offsets.
 
----
-
 ## Résultats obtenus
 
 La version finale du prototype permet :
@@ -510,7 +483,26 @@ La version finale du prototype permet :
 - de conserver la progression du traitement avec des checkpoints ;
 - d’exécuter l’ensemble dans trois services Docker.
 
----
+## Livrables
+
+Le projet comprend :
+
+- un producteur Python générant des tickets clients en continu ;
+- un topic Redpanda nommé `client_tickets` ;
+- un pipeline Spark Structured Streaming consommant et agrégeant les événements ;
+- un schéma explicite appliqué aux messages JSON ;
+- une agrégation des tickets par type de demande ;
+- des sorties analytiques aux formats JSON et Parquet ;
+- une compression Parquet avec Snappy ;
+- des checkpoints assurant le suivi des offsets et la reprise du traitement ;
+- trois services conteneurisés : Redpanda, producteur Python et Spark ;
+- un fichier `docker-compose.yml` orchestrant l’environnement local ;
+- des `Dockerfile` dédiés au producteur et au traitement Spark ;
+- un script permettant de lire les résultats Parquet ;
+- une documentation d’architecture hybride ;
+- une présentation de soutenance au format PDF ;
+- une documentation technique complète dans le README ;
+- un dépôt GitHub public documenté.
 
 ## Limites et évolutions possibles
 
@@ -531,8 +523,6 @@ pour un environnement de production :
 - stocker les résultats dans un data lake ;
 - intégrer les fichiers Parquet dans un lakehouse.
 
----
-
 ## Compétences démontrées
 
 - conception d’une architecture événementielle ;
@@ -549,8 +539,6 @@ pour un environnement de production :
 - orchestration avec Docker Compose ;
 - diagnostic d’une infrastructure distribuée ;
 - documentation d’un POC Data Engineering.
-
----
 
 ## Auteur
 
